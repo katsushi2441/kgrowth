@@ -32,11 +32,10 @@ def _base_job(kind: str, title: str, priority: int, app: str, action: str, paylo
 
 def generate_improvement_jobs(config: dict[str, Any], gsc: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
-    jobs.extend(_amazon_cta_jobs(access))
+    jobs.extend(_search_query_answer_jobs(gsc))
+    jobs.extend(_affiliate_product_article_jobs(access))
     jobs.extend(_hub_article_jobs(gsc))
-    jobs.extend(_aixtube_jobs(gsc, access))
     jobs.extend(_buzblogger_jobs(gsc))
-    jobs.append(_noindex_register_job())
     return sorted(jobs, key=lambda row: (int(row["priority"]), row["kind"], row["id"]))
 
 
@@ -65,15 +64,100 @@ def _amazon_cta_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _search_query_answer_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
+    jobs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in gsc.get("boost_queries", [])[:20]:
+        query = str(row.get("query") or "").strip()
+        page = str(row.get("page") or "").strip()
+        if not query or not page:
+            continue
+        if row.get("impressions", 0) < 10:
+            continue
+        if not (8 <= float(row.get("position") or 0) <= 30):
+            continue
+        key = query.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        job = _base_job(
+            "search_query_answer_article",
+            f"検索意図回答記事を作る: {query}",
+            10,
+            "aixec",
+            "enqueue:search_query_answer_article",
+            {
+                "query": query,
+                "page": page,
+                "position": row.get("position", 0),
+                "impressions": row.get("impressions", 0),
+                "clicks": row.get("clicks", 0),
+                "preferred_affiliate": "amazon",
+            },
+        )
+        job["success_rule"] = "A search-intent article is published to AIxSNS with an internal link to the ranked page and Amazon-first affiliate CTA."
+        job["cooldown_minutes"] = 120
+        job["max_attempts_per_day"] = 1
+        jobs.append(job)
+        if len(jobs) >= 10:
+            break
+    return jobs
+
+
+def _affiliate_product_article_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
+    jobs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in access.get("top_affiliate_products", [])[:30]:
+        product = str(row.get("product") or "").strip()
+        if not product or product == "(unknown)" or product.lower() == "test":
+            continue
+        clicks = int(row.get("clicks") or 0)
+        if clicks < 3:
+            continue
+        key = (str(row.get("pid") or ""), str(row.get("jan") or ""), str(row.get("model") or ""), product.lower())
+        digest = "|".join(key)
+        if digest in seen:
+            continue
+        seen.add(digest)
+        job = _base_job(
+            "affiliate_product_article",
+            f"実クリック商品記事を作る: {product[:48]}",
+            20,
+            "aixec",
+            "enqueue:affiliate_product_article",
+            {
+                "product": product,
+                "pid": row.get("pid", ""),
+                "jan": row.get("jan", ""),
+                "asin": row.get("asin", ""),
+                "model": row.get("model", ""),
+                "source": row.get("from", ""),
+                "to": row.get("to", ""),
+                "clicks": clicks,
+                "raw_clicks": row.get("raw_clicks", 0),
+                "preferred_affiliate": "amazon",
+            },
+        )
+        job["success_rule"] = "A product-focused AIxSNS article is published for a product with real human affiliate clicks, linking to Amazon first and the source page."
+        job["cooldown_minutes"] = 180
+        job["max_attempts_per_day"] = 1
+        jobs.append(job)
+        if len(jobs) >= 8:
+            break
+    return jobs
+
+
 def _hub_article_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
     seen_topics: set[str] = set()
-    amazon_topics = ("python", "linux", "ai", "プログラミング", "書籍", "生成ai", "gemini", "ipad")
+    amazon_topics = ("python", "linux", "プログラミング", "生成ai", "gemini", "ipad")
     for row in gsc.get("hub_topics", [])[:30]:
         topic = str(row.get("topic", ""))
         if not topic:
             continue
         topic_l = topic.lower()
+        if len(topic_l) <= 2 or topic_l in {"ai", "書籍", "reviews", "or", "()"}:
+            continue
         if not any(key in topic_l for key in amazon_topics):
             continue
         normalized = topic_l.replace("　", " ").strip()
@@ -126,21 +210,3 @@ def _buzblogger_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
     job["success_rule"] = "Generated articles include search_query, answer practical intent, and select products by theme text."
     job["cooldown_minutes"] = 360
     return [job]
-
-
-def _noindex_register_job() -> dict[str, Any]:
-    job = _base_job(
-        "aixsns_register_noindex",
-        "AIxSNS register投稿詳細のnoindexを確認する",
-        50,
-        "aixec",
-        "enqueue:aixsns_register_noindex_check",
-        {
-            "author": "register",
-            "rule": "detail pages only: noindex,follow",
-        },
-    )
-    job["success_rule"] = "register detail pages have noindex,follow; normal article pages remain indexable."
-    job["cooldown_minutes"] = 1440
-    job["max_attempts_per_day"] = 1
-    return job
