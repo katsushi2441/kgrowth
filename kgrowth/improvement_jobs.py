@@ -67,6 +67,7 @@ def _amazon_cta_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _hub_article_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
+    seen_topics: set[str] = set()
     amazon_topics = ("python", "linux", "ai", "プログラミング", "書籍", "生成ai", "gemini", "ipad")
     for row in gsc.get("hub_topics", [])[:30]:
         topic = str(row.get("topic", ""))
@@ -75,6 +76,15 @@ def _hub_article_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
         topic_l = topic.lower()
         if not any(key in topic_l for key in amazon_topics):
             continue
+        normalized = topic_l.replace("　", " ").strip()
+        normalized = {
+            "linux": "linux",
+            "linuxサーバー": "linux",
+            "ipad": "ipad",
+        }.get(normalized, normalized)
+        if normalized in seen_topics:
+            continue
+        seen_topics.add(normalized)
         job = _base_job(
             "amazon_hub_article",
             f"Amazon向けハブ記事を作る: {topic}",
@@ -96,28 +106,7 @@ def _hub_article_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _aixtube_jobs(gsc: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
-    jobs: list[dict[str, Any]] = []
-    for row in gsc.get("boost_queries", [])[:20]:
-        page = str(row.get("page", ""))
-        if "aixtube.php" not in page:
-            continue
-        job = _base_job(
-            "aixtube_search_snippet",
-            f"検索表示があるAIxTubeページを改善: {row.get('query', '')}",
-            35,
-            "aixec",
-            "enqueue:aixtube_search_page_improve",
-            {
-                "query": row.get("query", ""),
-                "page": page,
-                "position": row.get("position", 0),
-                "impressions": row.get("impressions", 0),
-                "preferred_affiliate": "amazon",
-            },
-        )
-        job["success_rule"] = "Title/description/body/CTA are updated for the query and Amazon-first affiliate tracking remains active."
-        jobs.append(job)
-    return jobs
+    return []
 
 
 def _buzblogger_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
