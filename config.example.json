@@ -1,0 +1,25 @@
+{
+  "site_url": "https://aixec.exbridge.jp/",
+  "days_back": 28,
+  "gsc_service_account": "secrets/gsc-service-account.json",
+  "data_dir": "data",
+  "reports_dir": "reports",
+  "row_limit": 25000,
+  "ftp": {
+    "host_env": "KGROWTH_FTP_HOST",
+    "user_env": "KGROWTH_FTP_USER",
+    "pass_env": "KGROWTH_FTP_PASS",
+    "remote_paths": [
+      "logs/aixec.exbridge.jp-access_log",
+      "access-logs/aixec.exbridge.jp"
+    ],
+    "local_dir": "data/access_logs"
+  },
+  "analysis": {
+    "indexed_pages_estimate": 85800,
+    "title_min_impressions": 10,
+    "boost_min_impressions": 5,
+    "hub_min_queries": 3,
+    "max_rows": 40
+  }
+}

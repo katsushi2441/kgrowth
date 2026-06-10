@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+
+data/*
+!data/.gitkeep
+reports/*
+!reports/.gitkeep
+secrets/*
+!secrets/.gitkeep
+
+*.log
+*.sqlite
+*.db
+config.json
+service-account.json
