@@ -76,19 +76,20 @@ def run_analysis(config: dict) -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kgrowth")
-    parser.add_argument("--config", default="config.json")
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument("--config", default="config.json")
     sub = parser.add_subparsers(required=True)
 
-    fetch_gsc_parser = sub.add_parser("fetch-gsc")
+    fetch_gsc_parser = sub.add_parser("fetch-gsc", parents=[parent])
     fetch_gsc_parser.set_defaults(func=cmd_fetch_gsc)
 
-    fetch_logs_parser = sub.add_parser("fetch-logs")
+    fetch_logs_parser = sub.add_parser("fetch-logs", parents=[parent])
     fetch_logs_parser.set_defaults(func=cmd_fetch_logs)
 
-    analyze_parser = sub.add_parser("analyze")
+    analyze_parser = sub.add_parser("analyze", parents=[parent])
     analyze_parser.set_defaults(func=cmd_analyze)
 
-    weekly_parser = sub.add_parser("weekly")
+    weekly_parser = sub.add_parser("weekly", parents=[parent])
     weekly_parser.add_argument("--skip-gsc", action="store_true")
     weekly_parser.add_argument("--skip-logs", action="store_true")
     weekly_parser.set_defaults(func=cmd_weekly)
