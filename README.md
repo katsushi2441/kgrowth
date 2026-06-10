@@ -21,11 +21,11 @@ cp config.example.json config.json
 
 Put the GSC service account JSON in `secrets/gsc-service-account.json`.
 
-If Search Console does not accept a service account email, use your `gcloud`
-OAuth login instead:
+If Search Console does not accept a service account email, use Application
+Default Credentials with your Google account instead:
 
 ```bash
-gcloud auth login --no-launch-browser \
+gcloud auth application-default login --no-launch-browser \
   --scopes=https://www.googleapis.com/auth/webmasters.readonly,https://www.googleapis.com/auth/cloud-platform
 ```
 

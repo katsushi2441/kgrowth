@@ -77,7 +77,7 @@ def get_access_token(service_account_json: Path) -> str:
 
 def get_gcloud_access_token() -> str:
     proc = subprocess.run(
-        ["gcloud", "auth", "print-access-token"],
+        ["gcloud", "auth", "application-default", "print-access-token"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
