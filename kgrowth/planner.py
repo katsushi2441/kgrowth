@@ -60,8 +60,9 @@ def generate_plan(
         lines.append("- GSCデータ未取得。`fetch-gsc` 実行後に再生成する。")
     lines.extend(
         [
-            f"- access.log総リクエスト: {_fmt_int(access.get('total_requests', 0))}",
-            f"- access.logユニークIP: {_fmt_int(access.get('unique_ips', 0))}",
+            f"- simpletrack実PV: {_fmt_int(access.get('total_requests', 0))}",
+            f"- simpletrack rawリクエスト: {_fmt_int(access.get('raw_requests', access.get('total_requests', 0)))}",
+            f"- simpletrack実ユニークIP: {_fmt_int(access.get('unique_ips', 0))}",
             f"- bot比率: {access.get('bot_ratio', 0) * 100:.1f}%",
             "",
             "---",
@@ -141,6 +142,56 @@ def generate_plan(
             "",
             f"- AIxTube系リクエスト: {_fmt_int(access.get('page_types', {}).get('aixtube', 0))}",
             "- 動画生成ログと商品説明の有無を照合して、低品質動画は削除・再生成対象にする。",
+            "",
+            "---",
+            "",
+            "## Affiliate Findings",
+            "",
+            "simpletrackのbot除外・実クリック判定に基づく集計。`raw_clicks` はbot除外後のgo.php到達、`clicks` は実クリック判定済み。",
+            "",
+            "### Amazon / 楽天 実クリック",
+            "",
+            "| 対象 | 実クリック | rawクリック |",
+            "|---|---:|---:|",
+        ]
+    )
+    affiliate = access.get("affiliate_clicks", {})
+    for target in ("amazon", "rakuten", "(unknown)"):
+        if target in affiliate:
+            row = affiliate[target]
+            lines.append(f"| {target} | {_fmt_int(row.get('clicks', 0))} | {_fmt_int(row.get('raw_clicks', 0))} |")
+    if not affiliate:
+        lines.append("| なし | 0 | 0 |")
+    lines.extend(
+        [
+            "",
+            "### 実クリック上位の商品",
+            "",
+        ]
+    )
+    lines.extend(
+        _table(
+            access.get("top_affiliate_products", []),
+            [("対象", "to"), ("商品", "product"), ("実クリック", "clicks"), ("raw", "raw_clicks"), ("流入元", "from")],
+            20,
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "### 実クリック上位の流入元",
+            "",
+        ]
+    )
+    lines.extend(
+        _table(
+            access.get("top_affiliate_sources", []),
+            [("対象", "to"), ("流入元", "from"), ("実クリック", "clicks"), ("raw", "raw_clicks")],
+            20,
+        )
+    )
+    lines.extend(
+        [
             "",
             "---",
             "",
