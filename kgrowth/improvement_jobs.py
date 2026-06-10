@@ -72,6 +72,8 @@ def _search_query_answer_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
         page = str(row.get("page") or "").strip()
         if not query or not page:
             continue
+        if "/lp.php" in page:
+            continue
         if row.get("impressions", 0) < 10:
             continue
         if not (8 <= float(row.get("position") or 0) <= 30):
