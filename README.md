@@ -11,6 +11,7 @@ It collects Google Search Console data and web access logs, analyzes search dema
 - Parses access logs for traffic, bots, 404s, referrers, and page types.
 - Combines GSC and access-log signals.
 - Generates a weekly Markdown improvement plan in `reports/`.
+- Generates machine-readable improvement job proposals in `data/improvement_jobs_latest.json`.
 
 ## Setup
 
@@ -72,6 +73,14 @@ Analyze current data:
 python3 -m kgrowth.cli analyze --config config.json
 ```
 
+This writes:
+
+```text
+data/analysis_latest.json
+data/improvement_jobs_latest.json
+reports/growth_plan_latest.md
+```
+
 Run the weekly pipeline:
 
 ```bash
@@ -83,8 +92,28 @@ python3 -m kgrowth.cli weekly --config config.json
 1. Collect GSC and access-log data.
 2. Detect pages and query groups with search opportunity.
 3. Generate a plan with concrete repo/file-level improvement candidates.
-4. Execute selected improvements in the owning repositories.
-5. Compare next week's GSC/access-log data against the previous report.
+4. Generate improvement job proposals for kdeck Goal Queue.
+5. Execute selected improvements in the owning repositories through rqdb4ai.
+6. Compare next week's GSC/access-log data against the previous report.
+
+## 24/365 Improvement Operation
+
+Kurage Growth is not the worker runner. It is the analysis and job-proposal layer.
+
+The intended always-on flow is:
+
+```text
+kgrowth weekly/analyze
+  -> data/improvement_jobs_latest.json
+  -> kdeck Goal Queue
+  -> rqdb4ai generic execution queues
+  -> app-owned jobs in AIxEC / AIxSNS / AIxTube / BuzBlogger
+  -> simpletrack + GSC verification
+```
+
+The default strategy is Amazon-first because Amazon has confirmed sales while
+Rakuten has higher click volume but no confirmed sales. Rakuten remains a
+secondary path.
 
 ## Current Improvement Themes
 

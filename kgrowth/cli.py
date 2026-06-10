@@ -8,6 +8,7 @@ from .analysis import analyze_access_logs, analyze_gsc, estimate_index_efficienc
 from .config import ensure_dirs, load_config, resolve_path
 from .ftp_logs import fetch_logs
 from .gsc import fetch_gsc
+from .improvement_jobs import write_improvement_jobs
 from .planner import generate_plan
 
 
@@ -71,6 +72,7 @@ def run_analysis(config: dict) -> Path:
         json.dumps({"gsc": gsc, "access": access, "efficiency": efficiency}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    write_improvement_jobs(config, gsc, access, data_dir)
     return generate_plan(config, gsc, access, efficiency, reports_dir)
 
 
