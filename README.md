@@ -98,14 +98,15 @@ python3 -m kgrowth.cli weekly --config config.json
 
 ## 24/365 Improvement Operation
 
-Kurage Growth is not the worker runner. It is the analysis and job-proposal layer.
+Kurage Growth is the growth commander. It is not a generic worker runner.
 
 The intended always-on flow is:
 
 ```text
-kgrowth weekly/analyze
+kgrowth Hermes commander
+  -> kgrowth weekly/analyze
   -> data/improvement_jobs_latest.json
-  -> kdeck Goal Queue
+  -> kdeck Goal Queue state/UI
   -> rqdb4ai generic execution queues
   -> app-owned jobs in AIxEC / AIxSNS / AIxTube / BuzBlogger
   -> simpletrack + GSC verification
@@ -114,6 +115,22 @@ kgrowth weekly/analyze
 The default strategy is Amazon-first because Amazon has confirmed sales while
 Rakuten has higher click volume but no confirmed sales. Rakuten remains a
 secondary path.
+
+The commander service lives in this repository:
+
+```bash
+systemctl --user status kgrowth-hermes-commander.service
+tail -f /home/kojima/work/kgrowth/logs/hermes_growth_commander.log
+```
+
+`kdeck` remains the Goal Queue UI and state store. It must not hide internal
+state with different labels. The real Goal statuses are:
+
+- `waiting`: unfinished and waiting for the commander to choose it
+- `running`: an RQDB4AI job is being tracked
+- `cooldown`: intentionally cooling down before another run
+- `complete_today`: today's target or run limit is complete
+- `hold`: manually stopped
 
 ## Current Improvement Themes
 
