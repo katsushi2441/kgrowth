@@ -70,6 +70,30 @@ def _amazon_cta_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
     rakuten = affiliate.get("rakuten", {})
     amazon_clicks = int(amazon.get("clicks", 0))
     rakuten_clicks = int(rakuten.get("clicks", 0))
+    focus_products: list[dict[str, Any]] = []
+    for row in access.get("top_affiliate_products", [])[:10]:
+        product_name = str(row.get("product", "")).strip()
+        if not product_name or product_name.lower() in {"test", "(unknown)"}:
+            continue
+        product_name_key = product_name.lower()
+        if product_name_key in seen_product_names:
+            continue
+        product_key = str(row.get("pid") or row.get("jan") or row.get("asin") or row.get("model") or product_name)
+        if product_key in seen_products:
+            continue
+        seen_products.add(product_key)
+        seen_product_names.add(product_name_key)
+        focus_products.append(
+            {
+                "product": product_name,
+                "pid": row.get("pid", ""),
+                "asin": row.get("asin", ""),
+                "jan": row.get("jan", ""),
+                "source": row.get("from", ""),
+                "clicks": row.get("clicks", 0),
+                "raw_clicks": row.get("raw_clicks", 0),
+            }
+        )
     if rakuten_clicks > amazon_clicks:
         job = _base_job(
             "amazon_cta_rebalance",
@@ -82,43 +106,11 @@ def _amazon_cta_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
                 "amazon_clicks": amazon_clicks,
                 "rakuten_clicks": rakuten_clicks,
                 "target_pages": ["product", "aixtube", "ranking"],
+                "focus_products": focus_products,
             },
         )
         job["success_rule"] = "Amazon CTA is primary on product and AIxTube pages; post-change click tracking remains active."
         job["cooldown_minutes"] = 360
-        jobs.append(job)
-
-    for row in access.get("top_affiliate_products", [])[:10]:
-        if str(row.get("to")) != "amazon" and int(row.get("clicks", 0)) < 2:
-            continue
-        product_name = str(row.get("product", "")).strip()
-        if not product_name or product_name.lower() in {"test", "(unknown)"}:
-            continue
-        product_name_key = product_name.lower()
-        if product_name_key in seen_product_names:
-            continue
-        product_key = str(row.get("pid") or row.get("jan") or row.get("asin") or row.get("model") or product_name)
-        if product_key in seen_products:
-            continue
-        seen_products.add(product_key)
-        seen_product_names.add(product_name_key)
-        job = _base_job(
-            "amazon_product_growth",
-            f"Amazon向け商品導線を強化: {product_name}",
-            20,
-            "aixec",
-            "enqueue:aixec_amazon_product_growth",
-            {
-                "product": product_name,
-                "pid": row.get("pid", ""),
-                "asin": row.get("asin", ""),
-                "jan": row.get("jan", ""),
-                "source": row.get("from", ""),
-                "clicks": row.get("clicks", 0),
-                "raw_clicks": row.get("raw_clicks", 0),
-            },
-        )
-        job["success_rule"] = "Related product/article/video page is improved and Amazon link remains measurable."
         jobs.append(job)
     return jobs
 
