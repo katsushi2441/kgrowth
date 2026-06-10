@@ -21,6 +21,22 @@ cp config.example.json config.json
 
 Put the GSC service account JSON in `secrets/gsc-service-account.json`.
 
+If Search Console does not accept a service account email, use your `gcloud`
+OAuth login instead:
+
+```bash
+gcloud auth login --no-launch-browser \
+  --scopes=https://www.googleapis.com/auth/webmasters.readonly,https://www.googleapis.com/auth/cloud-platform
+```
+
+Then set this in `config.json`:
+
+```json
+{
+  "gsc_auth": "gcloud"
+}
+```
+
 Set FTP credentials with environment variables:
 
 ```bash

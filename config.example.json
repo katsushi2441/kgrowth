@@ -1,6 +1,7 @@
 {
   "site_url": "https://aixec.exbridge.jp/",
   "days_back": 28,
+  "gsc_auth": "service_account",
   "gsc_service_account": "secrets/gsc-service-account.json",
   "data_dir": "data",
   "reports_dir": "reports",

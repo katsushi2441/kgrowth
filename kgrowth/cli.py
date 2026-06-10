@@ -15,7 +15,7 @@ def cmd_fetch_gsc(args: argparse.Namespace) -> None:
     config = load_config(args.config)
     ensure_dirs(config)
     key_file = resolve_path(config, config["gsc_service_account"])
-    if not key_file.exists():
+    if config.get("gsc_auth", "service_account") != "gcloud" and not key_file.exists():
         raise SystemExit(f"GSC service account not found: {key_file}")
     out = fetch_gsc(config, key_file, resolve_path(config, config["data_dir"]))
     print(out)
@@ -41,7 +41,7 @@ def cmd_weekly(args: argparse.Namespace) -> None:
     ensure_dirs(config)
     if not args.skip_gsc:
         key_file = resolve_path(config, config["gsc_service_account"])
-        if key_file.exists():
+        if config.get("gsc_auth", "service_account") == "gcloud" or key_file.exists():
             print(fetch_gsc(config, key_file, resolve_path(config, config["data_dir"])))
         else:
             print(f"skip GSC: service account not found: {key_file}")

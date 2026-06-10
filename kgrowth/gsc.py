@@ -75,6 +75,22 @@ def get_access_token(service_account_json: Path) -> str:
     return payload["access_token"]
 
 
+def get_gcloud_access_token() -> str:
+    proc = subprocess.run(
+        ["gcloud", "auth", "print-access-token"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "gcloud auth print-access-token failed")
+    token = proc.stdout.strip()
+    if not token:
+        raise RuntimeError("gcloud returned an empty access token")
+    return token
+
+
 def query_search_analytics(token: str, site_url: str, body: dict[str, Any]) -> list[dict[str, Any]]:
     url = (
         "https://www.googleapis.com/webmasters/v3/sites/"
@@ -128,7 +144,11 @@ def fetch_all(
 def fetch_gsc(config: dict[str, Any], key_file: Path, out_dir: Path) -> Path:
     end_date = date.today() - timedelta(days=2)
     start_date = date.today() - timedelta(days=int(config["days_back"]) + 2)
-    token = get_access_token(key_file)
+    auth_mode = config.get("gsc_auth", "service_account")
+    if auth_mode == "gcloud":
+        token = get_gcloud_access_token()
+    else:
+        token = get_access_token(key_file)
     site_url = config["site_url"]
     row_limit = int(config.get("row_limit", 25000))
     result = {
