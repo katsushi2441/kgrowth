@@ -62,57 +62,7 @@ def write_improvement_jobs(
 
 
 def _amazon_cta_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
-    jobs: list[dict[str, Any]] = []
-    seen_products: set[str] = set()
-    seen_product_names: set[str] = set()
-    affiliate = access.get("affiliate_clicks", {})
-    amazon = affiliate.get("amazon", {})
-    rakuten = affiliate.get("rakuten", {})
-    amazon_clicks = int(amazon.get("clicks", 0))
-    rakuten_clicks = int(rakuten.get("clicks", 0))
-    focus_products: list[dict[str, Any]] = []
-    for row in access.get("top_affiliate_products", [])[:10]:
-        product_name = str(row.get("product", "")).strip()
-        if not product_name or product_name.lower() in {"test", "(unknown)"}:
-            continue
-        product_name_key = product_name.lower()
-        if product_name_key in seen_product_names:
-            continue
-        product_key = str(row.get("pid") or row.get("jan") or row.get("asin") or row.get("model") or product_name)
-        if product_key in seen_products:
-            continue
-        seen_products.add(product_key)
-        seen_product_names.add(product_name_key)
-        focus_products.append(
-            {
-                "product": product_name,
-                "pid": row.get("pid", ""),
-                "asin": row.get("asin", ""),
-                "jan": row.get("jan", ""),
-                "source": row.get("from", ""),
-                "clicks": row.get("clicks", 0),
-                "raw_clicks": row.get("raw_clicks", 0),
-            }
-        )
-    if rakuten_clicks > amazon_clicks:
-        job = _base_job(
-            "amazon_cta_rebalance",
-            "Amazon実売上優先で商品/AIxTubeのCTAを再配置する",
-            10,
-            "aixec",
-            "enqueue:aixec_amazon_cta_rebalance",
-            {
-                "reason": "Amazon has sales while Rakuten does not; prioritize Amazon even if Rakuten click volume is higher.",
-                "amazon_clicks": amazon_clicks,
-                "rakuten_clicks": rakuten_clicks,
-                "target_pages": ["product", "aixtube", "ranking"],
-                "focus_products": focus_products,
-            },
-        )
-        job["success_rule"] = "Amazon CTA is primary on product and AIxTube pages; post-change click tracking remains active."
-        job["cooldown_minutes"] = 360
-        jobs.append(job)
-    return jobs
+    return []
 
 
 def _hub_article_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
@@ -147,24 +97,6 @@ def _hub_article_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _aixtube_jobs(gsc: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
-    aixtube_requests = int(access.get("page_types", {}).get("aixtube", 0))
-    if aixtube_requests > 0:
-        job = _base_job(
-            "aixtube_amazon_cta",
-            "AIxTubeページにAmazon優先CTAと品質フィルタを反映する",
-            25,
-            "aixec",
-            "enqueue:aixtube_amazon_cta_quality_fix",
-            {
-                "aixtube_real_requests": aixtube_requests,
-                "preferred_affiliate": "amazon",
-                "quality_filter": "exclude ID-only or description-missing videos",
-            },
-        )
-        job["success_rule"] = "AIxTube pages show Amazon-first CTA and low-quality video pages are queued for regeneration."
-        job["cooldown_minutes"] = 180
-        jobs.append(job)
-
     for row in gsc.get("boost_queries", [])[:20]:
         page = str(row.get("page", ""))
         if "aixtube.php" not in page:
