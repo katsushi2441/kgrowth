@@ -59,7 +59,7 @@ def run_analysis(config: dict) -> Path:
     reports_dir = resolve_path(config, config["reports_dir"])
     gsc_data = load_json(data_dir / "gsc_latest.json")
     log_dir = resolve_path(config, config["ftp"]["local_dir"])
-    log_paths = sorted([p for p in log_dir.glob("*") if p.is_file()])
+    log_paths = select_log_paths(log_dir, config.get("ftp", {}))
     gsc = analyze_gsc(gsc_data, config.get("analysis", {}))
     access = analyze_access_logs(log_paths)
     efficiency = estimate_index_efficiency(
@@ -72,6 +72,17 @@ def run_analysis(config: dict) -> Path:
         encoding="utf-8",
     )
     return generate_plan(config, gsc, access, efficiency, reports_dir)
+
+
+def select_log_paths(log_dir: Path, ftp_config: dict) -> list[Path]:
+    paths = sorted([p for p in log_dir.glob("*") if p.is_file()])
+    if ftp_config.get("parse_mode", "latest_snapshot") != "latest_snapshot":
+        return paths
+    stamped = [p for p in paths if len(p.name) > 16 and p.name[:15].replace("_", "").isdigit()]
+    if not stamped:
+        return paths
+    newest = max(p.name[:15] for p in stamped)
+    return [p for p in stamped if p.name.startswith(newest)]
 
 
 def build_parser() -> argparse.ArgumentParser:

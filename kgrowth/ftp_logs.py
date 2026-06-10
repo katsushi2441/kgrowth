@@ -2,14 +2,30 @@ from __future__ import annotations
 
 import ftplib
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
 
-def _env(name: str) -> str:
-    value = os.environ.get(name)
+def _read_legacy_helper(path: str | None) -> dict[str, str]:
+    if not path:
+        return {}
+    helper = Path(path).expanduser()
+    if not helper.is_file():
+        return {}
+    text = helper.read_text(encoding="utf-8", errors="ignore")
+    values: dict[str, str] = {}
+    for key in ("FTP_HOST", "FTP_USER", "FTP_PASS"):
+        match = re.search(rf"^{key}\s*=\s*(['\"])(.*?)\1", text, re.MULTILINE)
+        if match:
+            values[key] = match.group(2)
+    return values
+
+
+def _setting(ftp_config: dict, key: str, env_key: str, legacy: dict[str, str], legacy_key: str) -> str:
+    value = os.environ.get(env_key) or ftp_config.get(key) or legacy.get(legacy_key)
     if not value:
-        raise RuntimeError(f"missing environment variable: {name}")
+        raise RuntimeError(f"missing FTP setting: {key} or environment variable {env_key}")
     return value
 
 
@@ -19,9 +35,10 @@ def _safe_name(remote_path: str) -> str:
 
 def fetch_logs(config: dict, out_dir: Path) -> list[Path]:
     ftp_config = config.get("ftp", {})
-    host = _env(ftp_config.get("host_env", "KGROWTH_FTP_HOST"))
-    user = _env(ftp_config.get("user_env", "KGROWTH_FTP_USER"))
-    password = _env(ftp_config.get("pass_env", "KGROWTH_FTP_PASS"))
+    legacy = _read_legacy_helper(ftp_config.get("legacy_helper"))
+    host = _setting(ftp_config, "host", ftp_config.get("host_env", "KGROWTH_FTP_HOST"), legacy, "FTP_HOST")
+    user = _setting(ftp_config, "user", ftp_config.get("user_env", "KGROWTH_FTP_USER"), legacy, "FTP_USER")
+    password = _setting(ftp_config, "password", ftp_config.get("pass_env", "KGROWTH_FTP_PASS"), legacy, "FTP_PASS")
     remote_paths = ftp_config.get("remote_paths", [])
     if not remote_paths:
         raise RuntimeError("ftp.remote_paths is empty")

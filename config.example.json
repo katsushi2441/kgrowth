@@ -8,14 +8,17 @@
   "reports_dir": "reports",
   "row_limit": 25000,
   "ftp": {
+    "host": "ftp-exbridge.heteml.net",
+    "user": "exbridge",
     "host_env": "KGROWTH_FTP_HOST",
     "user_env": "KGROWTH_FTP_USER",
     "pass_env": "KGROWTH_FTP_PASS",
+    "legacy_helper": "/home/kojima/work/url2ai/src/ftpphp.py",
     "remote_paths": [
-      "logs/aixec.exbridge.jp-access_log",
-      "access-logs/aixec.exbridge.jp"
+      "web/aixec_exbridge_jp/access.log"
     ],
-    "local_dir": "data/access_logs"
+    "local_dir": "data/access_logs",
+    "parse_mode": "latest_snapshot"
   },
   "analysis": {
     "indexed_pages_estimate": 85800,

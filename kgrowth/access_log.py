@@ -61,21 +61,43 @@ def parse_logs(paths: Iterable[Path]) -> dict:
         files.append(str(path))
         with _open_text(path) as f:
             for line in f:
-                match = LOG_RE.search(line)
-                if not match:
+                row = None
+                request_path = ""
+                if "|" in line and line[:4].isdigit():
+                    parts = [part.strip() for part in line.rstrip("\n").split("|", 4)]
+                    if len(parts) != 5:
+                        continue
+                    row = {
+                        "time": parts[0],
+                        "ip": parts[1],
+                        "url": parts[2],
+                        "referer": parts[3],
+                        "ua": parts[4],
+                    }
+                    request_path = row["url"]
+                    if not request_path:
+                        continue
+                    parsed_url = urllib.parse.urlparse(request_path)
+                    if parsed_url.scheme and parsed_url.netloc:
+                        request_path = urllib.parse.urlunparse(("", "", parsed_url.path, "", parsed_url.query, ""))
+                else:
+                    match = LOG_RE.search(line)
+                    if not match:
+                        continue
+                    row = match.groupdict()
+                    request_path = row["path"]
+                    status[row["status"]] += 1
+                if not row:
                     continue
                 total += 1
-                row = match.groupdict()
-                unique_ips.add(row["ip"])
-                status[row["status"]] += 1
-                request_path = row["path"]
+                unique_ips.add(row["ip"].strip())
                 parsed = urllib.parse.urlparse(request_path)
                 page_key = parsed.path or "/"
                 pages[page_key] += 1
                 types[page_type(request_path)] += 1
-                if row["status"] == "404":
+                if row.get("status") == "404":
                     not_found[page_key] += 1
-                referer = row["referer"]
+                referer = row.get("referer", "").strip()
                 if referer and referer != "-":
                     referers[urllib.parse.urlparse(referer).netloc or referer] += 1
                 ua = row["ua"]

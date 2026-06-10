@@ -45,6 +45,11 @@ export KGROWTH_FTP_USER='user'
 export KGROWTH_FTP_PASS='password'
 ```
 
+For the existing Exbridge/heteml environment, `config.example.json` points to
+`web/aixec_exbridge_jp/access.log`. If environment variables are not set,
+`ftp.legacy_helper` can read the existing local FTP helper file without
+committing credentials to this repository.
+
 Do not commit `config.json`, `secrets/`, downloaded logs, or generated reports containing private data.
 
 ## Commands
