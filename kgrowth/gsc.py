@@ -91,16 +91,24 @@ def get_gcloud_access_token() -> str:
     return token
 
 
-def query_search_analytics(token: str, site_url: str, body: dict[str, Any]) -> list[dict[str, Any]]:
+def query_search_analytics(
+    token: str,
+    site_url: str,
+    body: dict[str, Any],
+    quota_project: str | None = None,
+) -> list[dict[str, Any]]:
     url = (
         "https://www.googleapis.com/webmasters/v3/sites/"
         + urllib.parse.quote(site_url, safe="")
         + "/searchAnalytics/query"
     )
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    if quota_project:
+        headers["X-Goog-User-Project"] = quota_project
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
@@ -119,6 +127,7 @@ def fetch_all(
     start: str,
     end: str,
     row_limit: int,
+    quota_project: str | None = None,
 ) -> list[dict[str, Any]]:
     all_rows: list[dict[str, Any]] = []
     start_row = 0
@@ -133,6 +142,7 @@ def fetch_all(
                 "rowLimit": row_limit,
                 "startRow": start_row,
             },
+            quota_project,
         )
         all_rows.extend(rows)
         if len(rows) < row_limit:
@@ -151,14 +161,15 @@ def fetch_gsc(config: dict[str, Any], key_file: Path, out_dir: Path) -> Path:
         token = get_access_token(key_file)
     site_url = config["site_url"]
     row_limit = int(config.get("row_limit", 25000))
+    quota_project = config.get("gsc_quota_project")
     result = {
         "site": site_url,
         "start": start_date.isoformat(),
         "end": end_date.isoformat(),
         "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "query_page": fetch_all(token, site_url, ["query", "page"], start_date.isoformat(), end_date.isoformat(), row_limit),
-        "pages": fetch_all(token, site_url, ["page"], start_date.isoformat(), end_date.isoformat(), row_limit),
-        "dates": fetch_all(token, site_url, ["date"], start_date.isoformat(), end_date.isoformat(), row_limit),
+        "query_page": fetch_all(token, site_url, ["query", "page"], start_date.isoformat(), end_date.isoformat(), row_limit, quota_project),
+        "pages": fetch_all(token, site_url, ["page"], start_date.isoformat(), end_date.isoformat(), row_limit, quota_project),
+        "dates": fetch_all(token, site_url, ["date"], start_date.isoformat(), end_date.isoformat(), row_limit, quota_project),
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     latest = out_dir / "gsc_latest.json"
