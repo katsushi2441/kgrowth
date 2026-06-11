@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 
 from .analysis import analyze_access_logs, analyze_gsc, estimate_index_efficiency, load_json
@@ -31,16 +32,24 @@ def cmd_fetch_logs(args: argparse.Namespace) -> None:
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
-    for config in selected_configs(args):
+    configs = selected_configs(args)
+    outputs = []
+    for config in configs:
         ensure_dirs(config)
         out = run_analysis(config)
+        outputs.append(out)
         print(out)
+    if len(configs) > 1:
+        print(write_aggregate_improvement_jobs(load_config(args.config), configs))
 
 
 def cmd_weekly(args: argparse.Namespace) -> None:
-    for config in selected_configs(args):
+    configs = selected_configs(args)
+    for config in configs:
         print(f"== {config.get('domain_id') or config.get('site_url')} ==")
         run_weekly_config(args, config)
+    if len(configs) > 1:
+        print(write_aggregate_improvement_jobs(load_config(args.config), configs))
 
 
 def run_weekly_config(args: argparse.Namespace, config: dict) -> None:
@@ -84,6 +93,46 @@ def run_analysis(config: dict) -> Path:
     )
     write_improvement_jobs(config, gsc, access, data_dir)
     return generate_plan(config, gsc, access, efficiency, reports_dir)
+
+
+def write_aggregate_improvement_jobs(base_config: dict, configs: list[dict]) -> Path:
+    root = Path(base_config["_root"])
+    out_dir = resolve_path(base_config, base_config.get("data_dir", "data"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    jobs: list[dict] = []
+    sources: list[dict] = []
+    for config in configs:
+        data_dir = resolve_path(config, config["data_dir"])
+        path = data_dir / "improvement_jobs_latest.json"
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        domain_jobs = payload.get("jobs", [])
+        if not isinstance(domain_jobs, list):
+            continue
+        domain_id = config.get("domain_id") or config.get("site_url") or str(data_dir.relative_to(root))
+        sources.append({"domain_id": domain_id, "path": str(path), "jobs": len(domain_jobs)})
+        for job in domain_jobs:
+            if isinstance(job, dict):
+                job = dict(job)
+                job.setdefault("domain_id", domain_id)
+                jobs.append(job)
+    jobs.sort(key=lambda row: (int(row.get("priority", 999)), str(row.get("kind", "")), str(row.get("id", ""))))
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "mode": "aggregate",
+        "note": "Aggregated kgrowth jobs across configured domains for existing kdeck sync.",
+        "sources": sources,
+        "jobs": jobs,
+    }
+    latest = out_dir / "improvement_jobs_latest.json"
+    latest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    history = out_dir / f"improvement_jobs_aggregate_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    history.write_text(latest.read_text(encoding="utf-8"), encoding="utf-8")
+    return latest
 
 
 def select_log_paths(log_dir: Path, ftp_config: dict) -> list[Path]:
