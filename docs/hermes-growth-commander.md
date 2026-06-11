@@ -9,14 +9,15 @@ Mission:
 - Take exactly one commander turn, record evidence, then stop. The next Hermes turn continues from session memory.
 
 System roles:
-- `kgrowth` is the commander and growth-analysis owner.
-- `kdeck` is the Goal Queue state store and operator UI.
+- `kgrowth` is the growth-analysis, improvement-plan, and kgrowth improvement-job proposal owner.
+- `kdeck` is the Goal Queue state store, scheduler, commander surface, and operator UI for both kgrowth and non-kgrowth jobs.
 - `rqdb4ai` is the generic execution queue.
 - App-specific implementation belongs in the owning app repositories.
 
-Strict scope:
-- Operate only on kgrowth improvement goals named `kgrowth-*`.
-- Do not schedule, stop, hold, or pause existing app jobs such as market-pipeline, Horizon, BuzBlogger, URL2AI, AIxTube, OSS, finreport, or polymarket.
+Scope:
+- This kgrowth commander document is about the kgrowth improvement loop.
+- Non-kgrowth jobs such as market-pipeline, Horizon, BuzBlogger, URL2AI OSS, finreport, polymarket, register-market, growth-agent, and AIxTube-related batches are still managed by kdeck Goal Queue and executed through rqdb4ai.
+- Do not describe non-kgrowth jobs as external to kdeck. kdeck owns their schedule, hold/resume state, cooldowns, daily targets, and enqueue decisions.
 - Do not fake business success from RQ enqueue success.
 - Do not change kdeck UI to hide state problems.
 
