@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,10 @@ from typing import Any
 def _job_id(kind: str, payload: dict[str, Any]) -> str:
     raw = json.dumps({"kind": kind, "payload": payload}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _job_signature(kind: str, payload: dict[str, Any]) -> str:
+    return _job_id(kind, payload)
 
 
 def _base_job(kind: str, title: str, priority: int, app: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -30,13 +36,112 @@ def _base_job(kind: str, title: str, priority: int, app: str, action: str, paylo
     }
 
 
+def _norm(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _semantic_key(kind: str, payload: dict[str, Any]) -> str:
+    if kind == "search_query_answer_article":
+        return f"{kind}|query={_norm(payload.get('query'))}|page={_norm(payload.get('page'))}"
+    if kind == "affiliate_product_article":
+        return "|".join(
+            [
+                kind,
+                f"pid={_norm(payload.get('pid'))}",
+                f"jan={_norm(payload.get('jan'))}",
+                f"model={_norm(payload.get('model'))}",
+                f"product={_norm(payload.get('product'))}",
+            ]
+        )
+    if kind == "amazon_hub_article":
+        return f"{kind}|topic={_norm(payload.get('topic'))}"
+    if kind == "buzblogger_search_intent":
+        return kind
+    return f"{kind}|{_job_signature(kind, payload)}"
+
+
+def _kdeck_controller_db(config: dict[str, Any]) -> Path:
+    value = (
+        os.environ.get("KGROWTH_KDECK_CONTROLLER_DB")
+        or os.environ.get("KDECK_CONTROLLER_DB")
+        or config.get("kdeck_controller_db")
+        or "/home/kojima/work/kdeck/storage/controller.sqlite"
+    )
+    return Path(str(value)).expanduser()
+
+
+def completed_improvement_keys(config: dict[str, Any]) -> dict[str, set[str]]:
+    db_path = _kdeck_controller_db(config)
+    completed = {"ids": set(), "signatures": set(), "semantic": set(), "goal_names": set(), "titles": set()}
+    if not db_path.is_file():
+        return completed
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT goals.goal_name, goals.payload, goal_runs.note
+            FROM goal_runs
+            JOIN goals ON goals.id = goal_runs.goal_id
+            WHERE goals.goal_name LIKE 'kgrowth-%'
+              AND (goal_runs.ok = 1 OR goal_runs.business_status = 'ok')
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return completed
+    finally:
+        if conn is not None:
+            conn.close()
+    for row in rows:
+        completed["goal_names"].add(str(row["goal_name"] or ""))
+        note = str(row["note"] or "").split(":", 1)[0].strip().lower()
+        if note:
+            completed["titles"].add(note)
+        try:
+            payload = json.loads(str(row["payload"] or "{}"))
+        except json.JSONDecodeError:
+            continue
+        improvement_job = (((payload.get("kwargs") or {}).get("improvement_job")) or {})
+        if not isinstance(improvement_job, dict):
+            continue
+        job_id = str(improvement_job.get("id") or "").strip()
+        kind = str(improvement_job.get("kind") or "").strip()
+        job_payload = improvement_job.get("payload") if isinstance(improvement_job.get("payload"), dict) else {}
+        title = str(improvement_job.get("title") or "").strip().lower()
+        if job_id:
+            completed["ids"].add(job_id)
+        if kind and job_payload:
+            completed["signatures"].add(_job_signature(kind, job_payload))
+            completed["semantic"].add(_semantic_key(kind, job_payload))
+        if title:
+            completed["titles"].add(title)
+    return completed
+
+
+def _is_completed_job(job: dict[str, Any], completed: dict[str, set[str]]) -> bool:
+    job_id = str(job.get("id") or "").strip()
+    kind = str(job.get("kind") or "").strip()
+    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    title = str(job.get("title") or "").strip().lower()
+    title_key = title.split(":", 1)[-1].strip() if ":" in title else title
+    return (
+        bool(job_id and job_id in completed["ids"])
+        or bool(kind and payload and _job_signature(kind, payload) in completed["signatures"])
+        or bool(kind and payload and _semantic_key(kind, payload) in completed["semantic"])
+        or bool(title_key and title_key in completed["titles"])
+    )
+
+
 def generate_improvement_jobs(config: dict[str, Any], gsc: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
     jobs.extend(_search_query_answer_jobs(gsc))
     jobs.extend(_affiliate_product_article_jobs(access))
     jobs.extend(_hub_article_jobs(gsc))
     jobs.extend(_buzblogger_jobs(gsc))
-    return sorted(jobs, key=lambda row: (int(row["priority"]), row["kind"], row["id"]))
+    completed = completed_improvement_keys(config)
+    fresh_jobs = [job for job in jobs if not _is_completed_job(job, completed)]
+    return sorted(fresh_jobs, key=lambda row: (int(row["priority"]), row["kind"], row["id"]))
 
 
 def write_improvement_jobs(
@@ -46,16 +151,23 @@ def write_improvement_jobs(
     out_dir: Path,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
+    completed = completed_improvement_keys(config)
     jobs = generate_improvement_jobs(config, gsc, access)
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "mode": "proposal",
-        "note": "kdeck should convert accepted jobs into Goal Queue items; rqdb4ai executes app-owned job functions.",
+        "note": "kdeck converts fresh kgrowth jobs into Goal Queue items; completed kgrowth jobs are never proposed again.",
+        "completed_history": {
+            "ids": len(completed["ids"]),
+            "signatures": len(completed["signatures"]),
+            "semantic": len(completed["semantic"]),
+            "titles": len(completed["titles"]),
+        },
         "jobs": jobs,
     }
     latest = out_dir / "improvement_jobs_latest.json"
     latest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    history = out_dir / f"improvement_jobs_{datetime.now().strftime('%Y%m%d')}.json"
+    history = out_dir / f"improvement_jobs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     history.write_text(latest.read_text(encoding="utf-8"), encoding="utf-8")
     return latest
 
