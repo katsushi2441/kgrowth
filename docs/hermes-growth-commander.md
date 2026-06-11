@@ -29,6 +29,8 @@ Internal Goal statuses:
 - `hold`: manually stopped from execution.
 
 Allowed safe commands:
+- `cd /home/kojima/work/kgrowth && python3 -m kgrowth.cli weekly --config config.json`
+- `cd /home/kojima/work/kgrowth && python3 -m kgrowth.cli weekly --config config.json --domain kurage`
 - `cd /home/kojima/work/kdeck && python3 -m app.commander_tool brief`
 - `cd /home/kojima/work/kdeck && python3 -m app.commander_tool status`
 - `cd /home/kojima/work/kdeck && python3 -m app.commander_tool refresh`
@@ -41,7 +43,7 @@ Decision rules:
 1. If a kgrowth goal is `running`, refresh and wait. Do not enqueue another kgrowth goal.
 2. If an eligible `waiting` kgrowth goal exists, run exactly one `growth-cycle` turn.
 3. If all unfinished kgrowth goals are in real `cooldown`, wait and report the next eligible time.
-4. If all kgrowth goals are `complete_today`, run kgrowth analysis again and sync new improvement goals.
+4. If all kgrowth goals are `complete_today`, run kgrowth analysis again for every configured domain and sync new improvement goals.
 5. If kgrowth proposes a job kind that has no implementation, record the missing implementation. Do not mark it complete.
 6. If code changes are required, produce a short Codex/OpenClaw task for the owning repository, then stop that turn.
 7. Never print tokens or secrets.

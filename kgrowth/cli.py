@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .analysis import analyze_access_logs, analyze_gsc, estimate_index_efficiency, load_json
-from .config import ensure_dirs, load_config, resolve_path
+from .config import domain_configs, ensure_dirs, load_config, resolve_path
 from .ftp_logs import fetch_logs
 from .gsc import fetch_gsc
 from .improvement_jobs import write_improvement_jobs
@@ -13,32 +13,37 @@ from .planner import generate_plan
 
 
 def cmd_fetch_gsc(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
-    ensure_dirs(config)
-    key_file = resolve_path(config, config["gsc_service_account"])
-    if config.get("gsc_auth", "service_account") != "gcloud" and not key_file.exists():
-        raise SystemExit(f"GSC service account not found: {key_file}")
-    out = fetch_gsc(config, key_file, resolve_path(config, config["data_dir"]))
-    print(out)
+    for config in selected_configs(args):
+        ensure_dirs(config)
+        key_file = resolve_path(config, config["gsc_service_account"])
+        if config.get("gsc_auth", "service_account") != "gcloud" and not key_file.exists():
+            raise SystemExit(f"GSC service account not found: {key_file}")
+        out = fetch_gsc(config, key_file, resolve_path(config, config["data_dir"]))
+        print(out)
 
 
 def cmd_fetch_logs(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
-    ensure_dirs(config)
-    downloaded = fetch_logs(config, resolve_path(config, config["ftp"]["local_dir"]))
-    for path in downloaded:
-        print(path)
+    for config in selected_configs(args):
+        ensure_dirs(config)
+        downloaded = fetch_logs(config, resolve_path(config, config["ftp"]["local_dir"]))
+        for path in downloaded:
+            print(path)
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
-    ensure_dirs(config)
-    out = run_analysis(config)
-    print(out)
+    for config in selected_configs(args):
+        ensure_dirs(config)
+        out = run_analysis(config)
+        print(out)
 
 
 def cmd_weekly(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
+    for config in selected_configs(args):
+        print(f"== {config.get('domain_id') or config.get('site_url')} ==")
+        run_weekly_config(args, config)
+
+
+def run_weekly_config(args: argparse.Namespace, config: dict) -> None:
     ensure_dirs(config)
     if not args.skip_gsc:
         key_file = resolve_path(config, config["gsc_service_account"])
@@ -53,6 +58,11 @@ def cmd_weekly(args: argparse.Namespace) -> None:
         except RuntimeError as exc:
             print(f"skip logs: {exc}")
     print(run_analysis(config))
+
+
+def selected_configs(args: argparse.Namespace) -> list[dict]:
+    config = load_config(args.config)
+    return domain_configs(config, selected=args.domain)
 
 
 def run_analysis(config: dict) -> Path:
@@ -91,6 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kgrowth")
     parent = argparse.ArgumentParser(add_help=False)
     parent.add_argument("--config", default="config.json")
+    parent.add_argument("--domain", default=None, help="Run only one config.domains entry by id.")
     sub = parser.add_subparsers(required=True)
 
     fetch_gsc_parser = sub.add_parser("fetch-gsc", parents=[parent])

@@ -50,6 +50,41 @@ def load_config(path: str | Path) -> dict[str, Any]:
     return config
 
 
+def domain_configs(config: dict[str, Any], selected: str | None = None) -> list[dict[str, Any]]:
+    domains = config.get("domains")
+    if not domains:
+        return [config]
+    if not isinstance(domains, list):
+        raise ValueError("config.domains must be a list")
+
+    base = {k: v for k, v in config.items() if k != "domains"}
+    items: list[dict[str, Any]] = []
+    for domain in domains:
+        if not isinstance(domain, dict):
+            continue
+        domain_id = str(domain.get("id") or domain.get("name") or "").strip()
+        if selected and domain_id != selected:
+            continue
+        merged = deep_merge(base, domain)
+        merged["domain_id"] = domain_id
+        merged.setdefault("site_name", domain_id or merged.get("site_url", "site"))
+        if domain_id:
+            if "data_dir" not in domain:
+                merged["data_dir"] = f"data/domains/{domain_id}"
+            if "reports_dir" not in domain:
+                merged["reports_dir"] = f"reports/domains/{domain_id}"
+            ftp = merged.setdefault("ftp", {})
+            if isinstance(ftp, dict):
+                domain_ftp = domain.get("ftp") if isinstance(domain.get("ftp"), dict) else {}
+                if "local_dir" not in domain_ftp:
+                    ftp["local_dir"] = f"data/domains/{domain_id}/access_logs"
+        items.append(merged)
+
+    if selected and not items:
+        raise ValueError(f"domain not found: {selected}")
+    return items
+
+
 def resolve_path(config: dict[str, Any], value: str) -> Path:
     path = Path(value)
     if path.is_absolute():

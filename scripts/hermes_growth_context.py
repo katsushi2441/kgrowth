@@ -54,6 +54,59 @@ def plan_excerpt(limit: int = 1000) -> str:
     return PLAN.read_text(encoding="utf-8", errors="replace")[:limit]
 
 
+def domain_context(limit: int = 16) -> list[dict]:
+    out: list[dict] = []
+    for domain_dir in sorted((KGROWTH_ROOT / "data" / "domains").glob("*")):
+        if not domain_dir.is_dir():
+            continue
+        jobs_path = domain_dir / "improvement_jobs_latest.json"
+        analysis_path = domain_dir / "analysis_latest.json"
+        reports_path = KGROWTH_ROOT / "reports" / "domains" / domain_dir.name / "growth_plan_latest.md"
+        jobs = []
+        job_count = 0
+        if jobs_path.is_file():
+            try:
+                payload = json.loads(jobs_path.read_text(encoding="utf-8"))
+                all_jobs = payload.get("jobs", [])
+                job_count = len(all_jobs)
+                for job in all_jobs[:limit]:
+                    jobs.append({
+                        "id": job.get("id"),
+                        "kind": job.get("kind"),
+                        "title": job.get("title"),
+                        "priority": job.get("priority"),
+                        "target_app": job.get("target_app"),
+                        "action": job.get("action"),
+                    })
+            except Exception:
+                pass
+        analysis_summary = {}
+        if analysis_path.is_file():
+            try:
+                analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+                analysis_summary = {
+                    "gsc": {
+                        "available": (analysis.get("gsc") or {}).get("available"),
+                        "impressions": (analysis.get("gsc") or {}).get("total_impressions"),
+                        "clicks": (analysis.get("gsc") or {}).get("total_clicks"),
+                    },
+                    "access": {
+                        "total_requests": (analysis.get("access") or {}).get("total_requests"),
+                        "page_types": (analysis.get("access") or {}).get("page_types"),
+                    },
+                }
+            except Exception:
+                pass
+        out.append({
+            "domain": domain_dir.name,
+            "job_count": job_count,
+            "jobs": jobs,
+            "analysis": analysis_summary,
+            "plan_excerpt": reports_path.read_text(encoding="utf-8", errors="replace")[:800] if reports_path.is_file() else "",
+        })
+    return out
+
+
 def main() -> None:
     status = run_json(["python3", "-m", "app.commander_tool", "status"], KDECK_ROOT)
     goals = status.get("goals", []) if isinstance(status, dict) else []
@@ -68,6 +121,7 @@ def main() -> None:
             "repo": str(KGROWTH_ROOT),
             "improvement_jobs": load_jobs(),
             "plan_excerpt": plan_excerpt(),
+            "domains": domain_context(),
         },
         "kdeck_goal_queue": {
             "summary": status.get("summary") if isinstance(status, dict) else {},
@@ -87,7 +141,10 @@ def main() -> None:
             ],
             "events": status.get("events", [])[:5] if isinstance(status, dict) else [],
         },
-        "recommended_command": "cd /home/kojima/work/kdeck && python3 -m app.commander_tool growth-cycle",
+        "recommended_commands": [
+            "cd /home/kojima/work/kgrowth && python3 -m kgrowth.cli weekly --config config.json",
+            "cd /home/kojima/work/kdeck && python3 -m app.commander_tool growth-cycle",
+        ],
         "notes": [
             "Commander lives in kgrowth.",
             "kdeck is the Goal Queue state store and UI.",

@@ -1,11 +1,8 @@
 {
-  "site_url": "https://aixec.exbridge.jp/",
   "days_back": 28,
   "gsc_auth": "service_account",
   "gsc_quota_project": "dogwood-wharf-469003-n1",
   "gsc_service_account": "secrets/gsc-service-account.json",
-  "data_dir": "data",
-  "reports_dir": "reports",
   "row_limit": 25000,
   "ftp": {
     "host": "ftp-exbridge.heteml.net",
@@ -14,17 +11,46 @@
     "user_env": "KGROWTH_FTP_USER",
     "pass_env": "KGROWTH_FTP_PASS",
     "legacy_helper": "/home/kojima/work/url2ai/src/ftpphp.py",
-    "remote_paths": [
-      "web/aixec_exbridge_jp/access.log"
-    ],
-    "local_dir": "data/access_logs",
     "parse_mode": "latest_snapshot"
   },
   "analysis": {
-    "indexed_pages_estimate": 85800,
     "title_min_impressions": 10,
     "boost_min_impressions": 5,
     "hub_min_queries": 3,
     "max_rows": 40
-  }
+  },
+  "domains": [
+    {
+      "id": "aixec",
+      "site_name": "AIxEC",
+      "site_url": "https://aixec.exbridge.jp/",
+      "target_app": "aixec",
+      "growth_profile": "aixec",
+      "data_dir": "data",
+      "reports_dir": "reports",
+      "ftp": {
+        "remote_paths": ["web/aixec_exbridge_jp/access.log"],
+        "local_dir": "data/access_logs"
+      },
+      "analysis": {
+        "indexed_pages_estimate": 85800
+      }
+    },
+    {
+      "id": "kurage",
+      "site_name": "Kurage",
+      "site_url": "https://kurage.exbridge.jp/",
+      "target_app": "kurage",
+      "growth_profile": "kurage",
+      "data_dir": "data/domains/kurage",
+      "reports_dir": "reports/domains/kurage",
+      "ftp": {
+        "remote_paths": ["web/kurage_exbridge_jp/access.log"],
+        "local_dir": "data/domains/kurage/access_logs"
+      },
+      "analysis": {
+        "indexed_pages_estimate": 120
+      }
+    }
+  ]
 }

@@ -69,6 +69,8 @@ def page_type(path: str) -> str:
         return "product"
     if "sns.php" in clean:
         return "sns"
+    if "kuragev.php" in clean or "horizonv.php" in clean or "kuragevp.php" in clean:
+        return "video"
     if "aixtube" in clean or "/video/" in clean:
         return "aixtube"
     if "ranking" in clean:
@@ -155,6 +157,11 @@ def parse_logs(paths: Iterable[Path]) -> dict:
                 unique_ips.add(ip)
                 parsed = urllib.parse.urlparse(request_path)
                 page_key = parsed.path or "/"
+                if page_key in ("/kuragev.php", "/horizonv.php"):
+                    query = urllib.parse.parse_qs(parsed.query)
+                    video_id = (query.get("id") or [""])[0].strip()
+                    if video_id:
+                        page_key = f"{page_key}?id={video_id}"
                 pages[page_key] += 1
                 types[page_type(request_path)] += 1
                 if row.get("status") == "404":

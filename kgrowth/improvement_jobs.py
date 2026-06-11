@@ -135,10 +135,15 @@ def _is_completed_job(job: dict[str, Any], completed: dict[str, set[str]]) -> bo
 
 def generate_improvement_jobs(config: dict[str, Any], gsc: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
-    jobs.extend(_search_query_answer_jobs(gsc))
-    jobs.extend(_affiliate_product_article_jobs(access))
-    jobs.extend(_hub_article_jobs(gsc))
-    jobs.extend(_buzblogger_jobs(gsc))
+    if config.get("growth_profile") == "kurage":
+        jobs.extend(_kurage_search_video_jobs(config, gsc))
+        jobs.extend(_kurage_amazon_cta_jobs(config, access))
+        jobs.extend(_kurage_video_seo_jobs(config, access))
+    else:
+        jobs.extend(_search_query_answer_jobs(gsc))
+        jobs.extend(_affiliate_product_article_jobs(access))
+        jobs.extend(_hub_article_jobs(gsc))
+        jobs.extend(_buzblogger_jobs(gsc))
     completed = completed_improvement_keys(config)
     fresh_jobs = [job for job in jobs if not _is_completed_job(job, completed)]
     return sorted(fresh_jobs, key=lambda row: (int(row["priority"]), row["kind"], row["id"]))
@@ -174,6 +179,127 @@ def write_improvement_jobs(
 
 def _amazon_cta_jobs(access: dict[str, Any]) -> list[dict[str, Any]]:
     return []
+
+
+def _domain_payload(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "domain_id": config.get("domain_id", ""),
+        "site_name": config.get("site_name", ""),
+        "site_url": config.get("site_url", ""),
+    }
+
+
+def _kurage_search_video_jobs(config: dict[str, Any], gsc: dict[str, Any]) -> list[dict[str, Any]]:
+    jobs: list[dict[str, Any]] = []
+    target_app = str(config.get("target_app") or "kurage")
+    domain_payload = _domain_payload(config)
+    seen: set[str] = set()
+    for row in gsc.get("boost_queries", [])[:20]:
+        query = str(row.get("query") or "").strip()
+        page = str(row.get("page") or "").strip()
+        if not query or not page:
+            continue
+        if row.get("impressions", 0) < 5:
+            continue
+        key = query.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        payload = {
+            **domain_payload,
+            "query": query,
+            "page": page,
+            "position": row.get("position", 0),
+            "impressions": row.get("impressions", 0),
+            "clicks": row.get("clicks", 0),
+            "preferred_affiliate": "amazon",
+        }
+        job = _base_job(
+            "kurage_search_intent_video_page",
+            f"Kurage検索意図動画ページを改善: {query}",
+            10,
+            target_app,
+            "enqueue:kurage_search_intent_video_page",
+            payload,
+        )
+        job["success_rule"] = "Kurage video/list/detail page is improved for the query, with clearer title/description/internal links and an Amazon CTA when relevant."
+        job["cooldown_minutes"] = 120
+        job["max_attempts_per_day"] = 1
+        jobs.append(job)
+        if len(jobs) >= 10:
+            break
+    return jobs
+
+
+def _kurage_amazon_cta_jobs(config: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
+    jobs: list[dict[str, Any]] = []
+    target_app = str(config.get("target_app") or "kurage")
+    domain_payload = _domain_payload(config)
+    seen: set[str] = set()
+    for row in access.get("top_affiliate_products", [])[:30]:
+        product = str(row.get("product") or "").strip()
+        if not product or product == "(unknown)":
+            continue
+        clicks = int(row.get("clicks") or 0)
+        raw_clicks = int(row.get("raw_clicks") or 0)
+        if raw_clicks < 1:
+            continue
+        key = f"{product.lower()}|{row.get('asin','')}|{row.get('from','')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        payload = {
+            **domain_payload,
+            "keyword": product,
+            "asin": row.get("asin", ""),
+            "source_page": row.get("from", ""),
+            "clicks": clicks,
+            "raw_clicks": raw_clicks,
+            "preferred_affiliate": "amazon",
+        }
+        job = _base_job(
+            "kurage_amazon_cta_from_clicks",
+            f"Kurage Amazon CTAを改善: {product[:48]}",
+            20,
+            target_app,
+            "enqueue:kurage_amazon_cta_from_clicks",
+            payload,
+        )
+        job["success_rule"] = "The source Kurage page keeps or improves a relevant Amazon CTA and future similar videos inherit the same CTA pattern."
+        job["cooldown_minutes"] = 180
+        job["max_attempts_per_day"] = 1
+        jobs.append(job)
+        if len(jobs) >= 8:
+            break
+    return jobs
+
+
+def _kurage_video_seo_jobs(config: dict[str, Any], access: dict[str, Any]) -> list[dict[str, Any]]:
+    top_pages = access.get("top_pages", {})
+    candidates = []
+    for page, count in top_pages.items():
+        page_s = str(page)
+        if ("kuragev.php" not in page_s and "horizonv.php" not in page_s) or "id=" not in page_s:
+            continue
+        candidates.append((page_s, int(count)))
+    jobs: list[dict[str, Any]] = []
+    target_app = str(config.get("target_app") or "kurage")
+    domain_payload = _domain_payload(config)
+    for page, count in candidates[:10]:
+        payload = {**domain_payload, "page": page, "views": count}
+        job = _base_job(
+            "kurage_video_detail_seo",
+            f"Kurage動画詳細SEOを改善: {page}",
+            30,
+            target_app,
+            "enqueue:kurage_video_detail_seo",
+            payload,
+        )
+        job["success_rule"] = "The high-view video detail page has stronger title, description, related links, video sitemap metadata, and relevant Amazon CTA."
+        job["cooldown_minutes"] = 240
+        job["max_attempts_per_day"] = 1
+        jobs.append(job)
+    return jobs
 
 
 def _search_query_answer_jobs(gsc: dict[str, Any]) -> list[dict[str, Any]]:
