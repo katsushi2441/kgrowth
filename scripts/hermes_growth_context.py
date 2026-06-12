@@ -25,7 +25,7 @@ def run_json(command: list[str], cwd: Path) -> dict:
         return {"ok": False, "error": "invalid_json", "stdout_tail": proc.stdout[-2000:]}
 
 
-def load_jobs(limit: int = 38) -> dict:
+def load_jobs(limit: int = 12) -> dict:
     if not JOBS.is_file():
         return {"exists": False, "count": 0, "jobs": []}
     try:
@@ -48,13 +48,13 @@ def load_jobs(limit: int = 38) -> dict:
     return {"exists": True, "count": len(jobs), "jobs": compact}
 
 
-def plan_excerpt(limit: int = 1000) -> str:
+def plan_excerpt(limit: int = 500) -> str:
     if not PLAN.is_file():
         return ""
     return PLAN.read_text(encoding="utf-8", errors="replace")[:limit]
 
 
-def domain_context(limit: int = 16) -> list[dict]:
+def domain_context(limit: int = 8) -> list[dict]:
     out: list[dict] = []
     for domain_dir in sorted((KGROWTH_ROOT / "data" / "domains").glob("*")):
         if not domain_dir.is_dir():
@@ -102,9 +102,44 @@ def domain_context(limit: int = 16) -> list[dict]:
             "job_count": job_count,
             "jobs": jobs,
             "analysis": analysis_summary,
-            "plan_excerpt": reports_path.read_text(encoding="utf-8", errors="replace")[:800] if reports_path.is_file() else "",
+            "plan_excerpt": reports_path.read_text(encoding="utf-8", errors="replace")[:500] if reports_path.is_file() else "",
         })
     return out
+
+
+def compact_event(event: dict) -> dict:
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    compact_data = {}
+    for key in (
+        "job_id",
+        "imported",
+        "updated",
+        "disabled_stale",
+        "path",
+        "ok",
+        "returncode",
+        "started_at",
+        "finished_at",
+    ):
+        if key in data:
+            compact_data[key] = data.get(key)
+    if isinstance(data.get("evaluation"), dict):
+        evaluation = data["evaluation"]
+        compact_data["evaluation"] = {
+            "terminal": evaluation.get("terminal"),
+            "ok": evaluation.get("ok"),
+            "status": evaluation.get("status"),
+            "items": evaluation.get("items"),
+            "note": evaluation.get("note"),
+        }
+    if isinstance(data.get("totals"), dict):
+        compact_data["totals"] = data.get("totals")
+    return {
+        "level": event.get("level"),
+        "message": event.get("message"),
+        "created_at": event.get("created_at"),
+        "data": compact_data,
+    }
 
 
 def main() -> None:
@@ -139,7 +174,11 @@ def main() -> None:
                 }
                 for goal in kgrowth_goals[:38]
             ],
-            "events": status.get("events", [])[:5] if isinstance(status, dict) else [],
+            "events": [
+                compact_event(event)
+                for event in (status.get("events", [])[:8] if isinstance(status, dict) else [])
+                if isinstance(event, dict)
+            ],
         },
         "recommended_commands": [
             "cd /home/kojima/work/kgrowth && python3 -m kgrowth.cli weekly --config config.json",

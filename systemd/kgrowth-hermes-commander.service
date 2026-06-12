@@ -7,6 +7,7 @@ Type=simple
 WorkingDirectory=/home/kojima/work/kgrowth
 Environment=HOME=/home/kojima
 Environment=PATH=/home/kojima/.nvm/versions/node/v24.16.0/bin:/home/kojima/.npm-global/bin:/home/kojima/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=KDECK_KGROWTH_MIN_INTERVAL_SECONDS=300
 ExecStart=/home/kojima/work/kgrowth/scripts/run_hermes_growth_commander.sh
 Restart=on-failure
 RestartSec=10
