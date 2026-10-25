@@ -26,6 +26,10 @@ import re
 
 SRC_GLOB = "/var/log/nginx/access.log*"
 DEST = "/mnt/data/weblogs/xb-rtx3090-1/nginx"
+# 詳細ログ（deploy/nginx/00-kgrowth-detail-log.conf を入れると出る。大きさ rl= 付き）は別の置き場に保管する
+DETAIL_GLOB = "/var/log/nginx/access_detail.log*"
+DETAIL_DEST = "/mnt/data/weblogs/xb-rtx3090-1/nginx_detail"
+BIG_POST = 100_000  # これより大きい .php への POST を「大きな POST」として数える（PHP2Shell の見分け）
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORT_MD = os.path.join(ROOT, "reports", "attack_timeline_latest.md")
 REPORT_JSON = os.path.join(ROOT, "data", "attack_timeline_latest.json")
@@ -42,22 +46,24 @@ def _day(s: str) -> str:
     return datetime.datetime.strptime(s, "%d/%b/%Y").strftime("%Y-%m-%d")
 
 
-def archive() -> list[str]:
+def archive(src_glob: str = SRC_GLOB, dest: str = DEST) -> list[str]:
     """/var/log/nginx の全世代を読み、昨日までの日を日別ファイルにまとめる。既にある日は行を足すだけ（重ねない）。"""
     by_day: dict[str, set[str]] = collections.defaultdict(set)
-    for p in glob.glob(SRC_GLOB):
+    for p in glob.glob(src_glob):
         with _open(p) as f:
             for line in f:
                 m = LINE.match(line)
                 if m:
                     by_day[_day(m.group(2))].add(line if line.endswith("\n") else line + "\n")
-    os.makedirs(DEST, exist_ok=True)
+    if not by_day:
+        return []
+    os.makedirs(dest, exist_ok=True)
     today = datetime.date.today().strftime("%Y-%m-%d")
     written = []
     for day, lines in sorted(by_day.items()):
         if day >= today:
             continue
-        out = os.path.join(DEST, f"{day}.log.gz")
+        out = os.path.join(dest, f"{day}.log.gz")
         old: set[str] = set()
         if os.path.exists(out):
             with gzip.open(out, "rt", errors="replace") as f:
@@ -94,7 +100,7 @@ def count(days: int = 60) -> dict:
         if ip.startswith(INTERNAL):
             continue
         day = _day(d)
-        r = daily.setdefault(day, {"external": 0, "php": 0, "php_post": 0, "ips": collections.Counter()})
+        r = daily.setdefault(day, {"external": 0, "php": 0, "php_post": 0, "php_big_post": None, "ips": collections.Counter()})
         r["external"] += 1
         if ".php" in path.lower():
             r["php"] += 1
@@ -102,12 +108,30 @@ def count(days: int = 60) -> dict:
             hourly[f"{day} {hour}"] += 1
             if meth == "POST":
                 r["php_post"] += 1
+    # 詳細ログがある日は、.php への大きな POST（rl= が BIG_POST 超）を数える
+    big: collections.Counter = collections.Counter()
+    seen_detail: set[str] = set()
+    for p in sorted(glob.glob(os.path.join(DETAIL_DEST, "*.log.gz")))[-days:] + glob.glob(DETAIL_GLOB):
+        with _open(p) as f:
+            for line in f:
+                m = LINE.match(line)
+                if not m or m.group(1).startswith(INTERNAL) or line in seen_detail:
+                    continue
+                seen_detail.add(line)
+                day = _day(m.group(2))
+                big[day] += 0
+                rl = re.search(r" rl=(\d+)", line)
+                if m.group(4) == "POST" and ".php" in m.group(5).lower() and rl and int(rl.group(1)) > BIG_POST:
+                    big[day] += 1
+    for day, n in big.items():
+        if day in daily:
+            daily[day]["php_big_post"] = n
     rows = []
     for day in sorted(daily):
         r = daily[day]
         top = r["ips"].most_common(1)
         rows.append({"day": day, "external": r["external"], "php": r["php"], "php_post": r["php_post"],
-                     "php_ips": len(r["ips"]), "top_ip": top[0][0] if top else "", "top_ip_php": top[0][1] if top else 0})
+                     "php_big_post": r["php_big_post"], "php_ips": len(r["ips"]), "top_ip": top[0][0] if top else "", "top_ip_php": top[0][1] if top else 0})
     return {"generated_at": datetime.datetime.now().isoformat(timespec="seconds"), "source": DEST,
             "daily": rows, "php_hourly": dict(sorted(hourly.items()))}
 
@@ -121,7 +145,8 @@ def write_report(res: dict) -> None:
            "自社・heteml・LAN の経路は除く。PHP 狙い＝パスに .php を含むもの。いちばん多いIPが大半なら、1台のスキャンです。", ""]
     for r in res["daily"]:
         share = f"・最多IP {r['top_ip']} が {r['top_ip_php']}件" if r["php"] else ""
-        out.append(f"- {r['day']}: 外部 {r['external']}件 / PHP狙い {r['php']}件（POST {r['php_post']}件・IP {r['php_ips']}個{share}）")
+        bigs = f"・大きなPOST {r['php_big_post']}件" if r.get("php_big_post") is not None else ""
+        out.append(f"- {r['day']}: 外部 {r['external']}件 / PHP狙い {r['php']}件（POST {r['php_post']}件{bigs}・IP {r['php_ips']}個{share}）")
     with open(REPORT_MD, "w") as f:
         f.write("\n".join(out) + "\n")
 
@@ -129,6 +154,7 @@ def write_report(res: dict) -> None:
 def archive_job(**_kw) -> dict:
     """kdeck ゴール kgrowth-weblog-archive。保管した日数を items にする（新しい日が無ければ 0）。"""
     written = archive()
+    archive(DETAIL_GLOB, DETAIL_DEST)
     res = count()
     write_report(res)
     if not os.path.exists(os.path.join(DEST, f"{(datetime.date.today() - datetime.timedelta(days=1)):%Y-%m-%d}.log.gz")):
@@ -138,6 +164,7 @@ def archive_job(**_kw) -> dict:
 
 if __name__ == "__main__":
     w = archive()
+    archive(DETAIL_GLOB, DETAIL_DEST)
     res = count()
     write_report(res)
     print("保管した日:", w)
