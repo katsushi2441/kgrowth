@@ -140,3 +140,17 @@ state with different labels. The real Goal statuses are:
 - Use AIxTube videos outside the site where quality filters pass.
 
 The samples in `samples/` are kept as the original PHP proof-of-concept for GSC fetching and reporting.
+
+## Web server logs on this machine (attack timeline)
+
+`kgrowth/weblog_archive.py` keeps the nginx access logs of xb-rtx3090-1 beyond logrotate's 14 days and counts PHP-targeted requests from outside.
+
+```bash
+/usr/bin/python3 -m kgrowth.weblog_archive
+```
+
+- Archive: `/mnt/data/weblogs/xb-rtx3090-1/nginx/YYYY-MM-DD.log.gz` (one file per day, duplicate lines merged; today is fixed the next day).
+- Report: `reports/attack_timeline_latest.md` and `data/attack_timeline_latest.json` (external requests, `.php` requests, POST to `.php`, IPs, top IP per day).
+- Runs daily as the kdeck goal `kgrowth-weblog-archive` (queue `kurage-light`, function `kgrowth.weblog_archive.archive_job`).
+- Why: on 2026-10-25 we could not compare attacks before and after the PM's PHP2Shell notice (10/21 21:55 JST) because only 14 days of nginx logs existed and heteml had no access logs for that period.
+- The combined log format has no request size. PHP2Shell sends large POST bodies, so adding `$request_length` to nginx's `log_format` (needs root) makes those countable.
